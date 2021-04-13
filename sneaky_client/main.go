@@ -4,12 +4,39 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"log"
+	"net"
 	"net/http"
+	"time"
 
 	"golang.org/x/net/http2"
 )
+
+type connWrapper struct {
+	io.ReadWriteCloser
+}
+
+func (c connWrapper) LocalAddr() net.Addr {
+	return nil
+}
+
+func (c connWrapper) RemoteAddr() net.Addr {
+	return nil
+}
+
+func (c connWrapper) SetDeadline(t time.Time) error {
+	return nil
+}
+
+func (c connWrapper) SetReadDeadline(t time.Time) error {
+	return nil
+}
+
+func (c connWrapper) SetWriteDeadline(t time.Time) error {
+	return nil
+}
 
 func main() {
 	client := http.Client{}
@@ -38,35 +65,59 @@ func main() {
 	client.Transport = transport
 	req, err := http.NewRequest("GET", "https://localhost:61001", nil)
 	if err != nil {
-		fmt.Printf("Error %v\n", err)
+		log.Fatalf("Error Request %v\n", err)
 	}
 	req.Header.Set("Connection", "Upgrade, HTTP2-Settings")
 	req.Header.Set("Upgrade", "h2c")
 	req.Header.Set("HTTP2-Settings", "AAMAAABkAARAAAAAAAIAAAAA")
+	req.Header.Set("X-Debug", "Upgrade Request")
 
 	fmt.Printf("%+v\n", req)
 	resp, err := client.Do(req)
 	if err != nil {
-		fmt.Printf("Error %v\n", err)
+		log.Fatalf("Error Do %v\n", err)
 	}
 
 	if resp.StatusCode == 101 {
-		resp.Body.Close()
-		client.Transport = &http2.Transport{
-			TLSClientConfig: tlsConfig,
+		// defer resp.Body.Close()
+		// body, err := io.ReadAll(resp.Body)
+
+		// if err != nil {
+		// 	log.Fatalf("Read Body Error %v\n", err)
+		// } else {
+		// 	fmt.Printf("First Response Body %v\n", body)
+		// }
+
+		backConn, ok := resp.Body.(io.ReadWriteCloser)
+		if !ok {
+			log.Fatalf("BackConn type assertion %v\n", err)
+		}
+
+		var wrapper net.Conn
+		wrapper = connWrapper{backConn}
+
+		newTransport := &http2.Transport{
+			DialTLS: func(network, addr string, cfg *tls.Config) (net.Conn, error) {
+				return wrapper, nil
+			},
+			AllowHTTP: true,
+		}
+
+		newClient := &http.Client{
+			Transport: newTransport,
 		}
 
 		req, err := http.NewRequest("GET", "https://localhost:61001", nil)
 		if err != nil {
-			fmt.Printf("2nd Request Error %v\n", err)
+			log.Fatalf("2nd Request Error %v\n", err)
 		}
+		req.Header.Set("X-Debug", "Second Request")
 
-		resp, err = client.Do(req)
+		resp, err = newClient.Do(req)
 		if err != nil {
-			fmt.Printf("2nd Request Error %v\n", err)
+			log.Fatalf("2nd Request Do Error %v\n", err)
 		}
 	}
-	defer resp.Body.Close()
 
 	fmt.Printf("Client Proto: %d\n", resp.ProtoMajor)
 	fmt.Printf("%+v\n", resp)

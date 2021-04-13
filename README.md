@@ -15,16 +15,13 @@ Maybe it will work 🤞
 
 Current limitations:
 1. In the HTTP/2 case, it issues multiple requests
-1. Because it uses a different transport for the second upgrade, it doesn't re-use the TCP connection
-1. It still depends on ALPN to use HTTP/2 for the second connection
+1. In the HTTP/2 case, the server processes multiple, identical requests
 1. It is currently using a `http.Client`, and the same techniques might not work for a `httputil.ReverseProxy`
 1. Probably some other stuff
 
-Ideally, we could find a way to re-use the same Transport and/or connection for
-the second request. Even better, we could find a way to make the `http.Client`
-respect the `101 Switching Protocols` for us, like it does when using regular
-h2c. Hopefully in either of those cases, we can remove ALPN support from the
-envoy config.
+Current anti-limitations:
+1. Because it uses the connection from the Upgrade request, it doesn't re-use the TCP connection
+1. It no longer depends on ALPN to use HTTP/2 for the second connection
 
 ## Installation
 
