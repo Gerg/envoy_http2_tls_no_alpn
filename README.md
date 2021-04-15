@@ -7,19 +7,20 @@ The "ideal" method would be:
 1. Envoy terminates TLS and forwards the upgrade header to the backend
 1. The backend either accepts or rejects the h2c upgrade:
   1. If the backend speaks h2c, it responds with `101 Switching Protocols` and
-     the client sends a HTTP/2 request
+     returns HTTP/2 frames in the response (see https://tools.ietf.org/html/rfc7540#section-3.2)
   1. If the backend only speaks HTTP/1.1, it does not switch protocols and the
      client continues with HTTP/1.1
 
 Maybe it will work 🤞
 
 Current limitations:
-1. In the HTTP/2 case, it issues multiple requests
-1. In the HTTP/2 case, the server processes multiple, identical requests
+1. We don't currently have a good way to read the HTTP/2 frames in the response
+   body
 1. It is currently using a `http.Client`, and the same techniques might not work for a `httputil.ReverseProxy`
 1. Probably some other stuff
 
 Current anti-limitations:
+1. In the HTTP/2 case, it issues only a single request
 1. Because it uses the connection from the Upgrade request, it doesn't re-use the TCP connection
 1. It no longer depends on ALPN to use HTTP/2 for the second connection
 

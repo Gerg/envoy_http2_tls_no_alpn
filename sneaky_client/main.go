@@ -96,27 +96,48 @@ func main() {
 		var wrapper net.Conn
 		wrapper = connWrapper{backConn}
 
-		newTransport := &http2.Transport{
-			DialTLS: func(network, addr string, cfg *tls.Config) (net.Conn, error) {
-				return wrapper, nil
-			},
-			AllowHTTP: true,
-		}
-
-		newClient := &http.Client{
-			Transport: newTransport,
-		}
-
-		req, err := http.NewRequest("GET", "https://localhost:61001", nil)
+		// https://github.com/golang/net/blob/0fccb6fa2b5ce302a9da5afc2513d351bd175889/http2/transport.go#L678-L680
+		http2Transport := &http2.Transport{AllowHTTP: true}
+		_, err := http2Transport.NewClientConn(wrapper)
 		if err != nil {
-			log.Fatalf("2nd Request Error %v\n", err)
+			log.Fatalf("HTTP/2 Conn error %v\n", err)
 		}
-		req.Header.Set("X-Debug", "Second Request")
 
-		resp, err = newClient.Do(req)
+		framer := http2.NewFramer(resp.Body.(io.Writer), resp.Body)
+		// err = framer.WriteSettingsAck()
+		// if err != nil {
+		// 	log.Fatalf("Ack failed %v\n", err)
+		// }
+
+		frame, err := framer.ReadFrame()
 		if err != nil {
-			log.Fatalf("2nd Request Do Error %v\n", err)
+			log.Fatalf("Read frame 1 failed %v\n", err)
 		}
+		fmt.Printf("FRAME 1: %+v\n", frame)
+
+		frame, err = framer.ReadFrame()
+		if err != nil {
+			log.Fatalf("Read frame 2 failed %v\n", err)
+		}
+		fmt.Printf("FRAME 2: %+v\n", frame)
+
+		frame, err = framer.ReadFrame()
+		if err != nil {
+			log.Fatalf("Read frame 3 failed %v\n", err)
+		}
+		fmt.Printf("FRAME 3: %+v\n", frame)
+
+		frame, err = framer.ReadFrame()
+		if err != nil {
+			log.Fatalf("Read frame 4 failed %v\n", err)
+		}
+		fmt.Printf("FRAME 4: %+v\n", frame)
+
+		frame, err = framer.ReadFrame()
+		if err != nil {
+			log.Fatalf("Read frame 5 failed %v\n", err)
+		}
+		fmt.Printf("FRAME 5: %+v\n", frame)
 	}
 
 	fmt.Printf("Client Proto: %d\n", resp.ProtoMajor)
