@@ -1,46 +1,19 @@
 package main
 
 import (
+	"bufio"
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"log"
-	"net"
 	"net/http"
-	"time"
 
 	"golang.org/x/net/http2"
 )
 
-type connWrapper struct {
-	io.ReadWriteCloser
-}
-
-func (c connWrapper) LocalAddr() net.Addr {
-	return nil
-}
-
-func (c connWrapper) RemoteAddr() net.Addr {
-	return nil
-}
-
-func (c connWrapper) SetDeadline(t time.Time) error {
-	return nil
-}
-
-func (c connWrapper) SetReadDeadline(t time.Time) error {
-	return nil
-}
-
-func (c connWrapper) SetWriteDeadline(t time.Time) error {
-	return nil
-}
-
 func main() {
-	client := http.Client{}
-
 	caCert, err := ioutil.ReadFile("./client_certs/ca.crt")
 	if err != nil {
 		log.Fatalf("Reading CA: %s\n", err)
@@ -58,11 +31,14 @@ func main() {
 		Certificates:       []tls.Certificate{cert},
 	}
 
-	transport := &http.Transport{
-		TLSClientConfig: tlsConfig,
-	}
+	dialFn := http.DefaultTransport.(*http.Transport).DialContext
 
-	client.Transport = transport
+	conn, err := dialFn(context.Background(), "tcp", "localhost:61001")
+	if err != nil {
+		log.Fatalf("Error Dial %v\n", err)
+	}
+	conn = tls.Client(conn, tlsConfig)
+
 	req, err := http.NewRequest("GET", "https://localhost:61001", nil)
 	if err != nil {
 		log.Fatalf("Error Request %v\n", err)
@@ -72,72 +48,71 @@ func main() {
 	req.Header.Set("HTTP2-Settings", "AAMAAABkAARAAAAAAAIAAAAA")
 	req.Header.Set("X-Debug", "Upgrade Request")
 
-	fmt.Printf("%+v\n", req)
-	resp, err := client.Do(req)
-	if err != nil {
-		log.Fatalf("Error Do %v\n", err)
+	fmt.Printf("Request: %+v\n", req)
+
+	if err := req.Write(conn); err != nil {
+		log.Fatalf("Error write request %v\n", err)
 	}
 
+	br := bufio.NewReader(conn)
+
+	resp, err := http.ReadResponse(br, req)
+	if err != nil {
+		log.Fatalf("Error read response %v\n", err)
+	}
+	fmt.Printf("Response: %+v\n", resp)
+
 	if resp.StatusCode == 101 {
-		// defer resp.Body.Close()
-		// body, err := io.ReadAll(resp.Body)
-
-		// if err != nil {
-		// 	log.Fatalf("Read Body Error %v\n", err)
-		// } else {
-		// 	fmt.Printf("First Response Body %v\n", body)
-		// }
-
-		backConn, ok := resp.Body.(io.ReadWriteCloser)
-		if !ok {
-			log.Fatalf("BackConn type assertion %v\n", err)
-		}
-
-		var wrapper net.Conn
-		wrapper = connWrapper{backConn}
-
 		// https://github.com/golang/net/blob/0fccb6fa2b5ce302a9da5afc2513d351bd175889/http2/transport.go#L678-L680
 		http2Transport := &http2.Transport{AllowHTTP: true}
-		_, err := http2Transport.NewClientConn(wrapper)
+		_, err := http2Transport.NewClientConn(conn)
 		if err != nil {
 			log.Fatalf("HTTP/2 Conn error %v\n", err)
 		}
 
-		framer := http2.NewFramer(resp.Body.(io.Writer), resp.Body)
-		// err = framer.WriteSettingsAck()
-		// if err != nil {
-		// 	log.Fatalf("Ack failed %v\n", err)
-		// }
+		bw := bufio.NewWriter(conn)
+		framer := http2.NewFramer(bw, br)
 
-		frame, err := framer.ReadFrame()
-		if err != nil {
-			log.Fatalf("Read frame 1 failed %v\n", err)
-		}
-		fmt.Printf("FRAME 1: %+v\n", frame)
+		i := 0
 
-		frame, err = framer.ReadFrame()
-		if err != nil {
-			log.Fatalf("Read frame 2 failed %v\n", err)
-		}
-		fmt.Printf("FRAME 2: %+v\n", frame)
+		// https://github.com/golang/net/blob/d25e3042586827419b3589d4a4697231930a15d6/http2/transport.go#L1818
+	loop:
+		for {
+			frame, err := framer.ReadFrame()
+			if err != nil {
+				log.Fatalf("Read frame %d failed %v\n", i, err)
+			}
+			fmt.Printf("FRAME %d: %+v\n", i, frame)
 
-		frame, err = framer.ReadFrame()
-		if err != nil {
-			log.Fatalf("Read frame 3 failed %v\n", err)
-		}
-		fmt.Printf("FRAME 3: %+v\n", frame)
+			switch frame := frame.(type) {
+			case *http2.MetaHeadersFrame:
+				fmt.Printf("Got HEADERS: %+v\n", frame)
+				fmt.Printf("Response Headers: %+v\n", frame.String())
+			case *http2.DataFrame:
+				fmt.Printf("Got DATA: %+v\n", frame)
+				fmt.Printf("Response Data: %+v\n", string(frame.Data()))
+			case *http2.GoAwayFrame:
+				fmt.Printf("Got GOAWAY: %+v\n", frame)
+				break loop
+			case *http2.RSTStreamFrame:
+				fmt.Printf("Got RST_STREAM: %+v\n", frame)
+				break loop
+			case *http2.SettingsFrame:
+				fmt.Printf("Got SETTINGS: %+v\n", frame)
+				if !frame.IsAck() {
+					fmt.Println("ACKing SETTINGS", frame)
+					framer.WriteSettingsAck()
+				}
+			case *http2.PushPromiseFrame:
+				fmt.Printf("Got PUSH_PROMISE: %+v\n", frame)
+			case *http2.WindowUpdateFrame:
+				fmt.Printf("Got WINDOW_UPDATE: %+v\n", frame)
+			case *http2.PingFrame:
+				fmt.Printf("Got PING: %+v\n", frame)
+			}
 
-		frame, err = framer.ReadFrame()
-		if err != nil {
-			log.Fatalf("Read frame 4 failed %v\n", err)
+			i++
 		}
-		fmt.Printf("FRAME 4: %+v\n", frame)
-
-		frame, err = framer.ReadFrame()
-		if err != nil {
-			log.Fatalf("Read frame 5 failed %v\n", err)
-		}
-		fmt.Printf("FRAME 5: %+v\n", frame)
 	}
 
 	fmt.Printf("Client Proto: %d\n", resp.ProtoMajor)
