@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"crypto/tls"
 	"crypto/x509"
@@ -9,9 +10,21 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"strconv"
 
 	"golang.org/x/net/http2"
+	"golang.org/x/net/http2/hpack"
 )
+
+type buffer struct {
+	bytes.Buffer
+}
+
+// Add a Close method to our buffer so that we satisfy io.ReadWriteCloser.
+func (b *buffer) Close() error {
+	b.Buffer.Reset()
+	return nil
+}
 
 func main() {
 	caCert, err := ioutil.ReadFile("./client_certs/ca.crt")
@@ -63,15 +76,27 @@ func main() {
 	fmt.Printf("Response: %+v\n", resp)
 
 	if resp.StatusCode == 101 {
-		// https://github.com/golang/net/blob/0fccb6fa2b5ce302a9da5afc2513d351bd175889/http2/transport.go#L678-L680
-		http2Transport := &http2.Transport{AllowHTTP: true}
-		_, err := http2Transport.NewClientConn(conn)
-		if err != nil {
-			log.Fatalf("HTTP/2 Conn error %v\n", err)
-		}
+		// https://github.com/golang/net/blob/d25e3042586827419b3589d4a4697231930a15d6/http2/hpack/encode.go#L13
+		initialHeaderTableSize := uint32(4096)
+		// https://github.com/golang/net/blob/d25e3042586827419b3589d4a4697231930a15d6/http2/transport.go#L39
+		transportDefaultConnFlow := uint32(1 << 30)
+		transportDefaultStreamFlow := uint32(4 << 20)
 
+		// https://github.com/golang/net/blob/d25e3042586827419b3589d4a4697231930a15d6/http2/transport.go#L640
 		bw := bufio.NewWriter(conn)
 		framer := http2.NewFramer(bw, br)
+		framer.ReadMetaHeaders = hpack.NewDecoder(initialHeaderTableSize, nil)
+
+		initialSettings := []http2.Setting{
+			{ID: http2.SettingEnablePush, Val: 0},
+			{ID: http2.SettingInitialWindowSize, Val: transportDefaultStreamFlow},
+		}
+
+		// https://github.com/golang/net/blob/d25e3042586827419b3589d4a4697231930a15d6/http2/transport.go#L695
+		bw.Write([]byte(http2.ClientPreface))
+		framer.WriteSettings(initialSettings...)
+		framer.WriteWindowUpdate(0, transportDefaultConnFlow)
+		bw.Flush()
 
 		i := 0
 
@@ -88,9 +113,43 @@ func main() {
 			case *http2.MetaHeadersFrame:
 				fmt.Printf("Got HEADERS: %+v\n", frame)
 				fmt.Printf("Response Headers: %+v\n", frame.String())
+				// https: //github.com/golang/net/blob/d25e3042586827419b3589d4a4697231930a15d6/http2/transport.go#L1957
+				status := frame.PseudoValue("status")
+				statusCode, _ := strconv.Atoi(status)
+
+				regularFields := frame.RegularFields()
+				strs := make([]string, len(regularFields))
+				header := make(http.Header, len(regularFields))
+				resp = &http.Response{
+					Proto:      "HTTP/2.0",
+					ProtoMajor: 2,
+					Header:     header,
+					StatusCode: statusCode,
+					Status:     status + " " + http.StatusText(statusCode),
+				}
+				fmt.Printf("Client Proto: %d\n", resp.ProtoMajor)
+				for _, hf := range regularFields {
+					key := http.CanonicalHeaderKey(hf.Name)
+					vv := header[key]
+					if vv == nil && len(strs) > 0 {
+						vv, strs = strs[:1:1], strs[1:]
+						vv[0] = hf.Value
+						header[key] = vv
+					} else {
+						header[key] = append(vv, hf.Value)
+					}
+				}
 			case *http2.DataFrame:
 				fmt.Printf("Got DATA: %+v\n", frame)
+				// https://github.com/golang/net/blob/d25e3042586827419b3589d4a4697231930a15d6/http2/transport.go#L2195
+				data := frame.Data()
 				fmt.Printf("Response Data: %+v\n", string(frame.Data()))
+				body := &buffer{}
+				resp.Body = body
+				_, err = body.Write(data)
+				if err != nil {
+					log.Fatalf("Writing body failed %v\n", err)
+				}
 			case *http2.GoAwayFrame:
 				fmt.Printf("Got GOAWAY: %+v\n", frame)
 				break loop
@@ -109,13 +168,26 @@ func main() {
 				fmt.Printf("Got WINDOW_UPDATE: %+v\n", frame)
 			case *http2.PingFrame:
 				fmt.Printf("Got PING: %+v\n", frame)
+			default:
+				log.Fatalf("Transport: unhandled response frame type %T", frame)
 			}
 
 			i++
 		}
 	}
 
-	fmt.Printf("Client Proto: %d\n", resp.ProtoMajor)
-	fmt.Printf("%+v\n", resp)
-	fmt.Printf("%+v\n", resp.Header)
+	fmt.Print("\n\n====== Response ======\n\n")
+	fmt.Printf("Raw Response:\n\t%+v\n\n", resp)
+	fmt.Printf("Client Proto:\n\t%d\n\n", resp.ProtoMajor)
+	fmt.Printf("Headers:\n\t%+v\n\n", resp.Header)
+
+	defer resp.Body.Close()
+
+	bodyBytes, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		log.Fatalf("Error reading resp body: %+v\n", err)
+	}
+	bodyString := string(bodyBytes)
+
+	fmt.Printf("Response Body:\n\t%+v\n", bodyString)
 }

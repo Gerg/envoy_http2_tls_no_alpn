@@ -1,30 +1,31 @@
 # envoy_http2_tls_no_alpn
 Proof of concept for a HTTP connection that terminates TLS at envoy, but
-negotiates the HTTP version at the backend. Maybe impossible.
+negotiates the HTTP version at the backend.
 
 The "ideal" method would be:
 1. Make a HTTP/1.1 + TLS request with an `Upgrade: h2c` header
 1. Envoy terminates TLS and forwards the upgrade header to the backend
 1. The backend either accepts or rejects the h2c upgrade:
-  1. If the backend speaks h2c, it responds with `101 Switching Protocols` and
+    1. If the backend speaks h2c, it responds with `101 Switching Protocols` and
      starts sending HTTP/2 frames on the TCP connection in the response (see
      https://tools.ietf.org/html/rfc7540#section-3.2)
-  1. If the backend only speaks HTTP/1.1, it does not switch protocols and the
+    1. If the backend only speaks HTTP/1.1, it does not switch protocols and the
      client continues with HTTP/1.1
 
 Maybe it will work 🤞
 
+Unfortunately, golang's `http2.Transport` doesn't handle the `h2c` upgrade flow
+for us, so we have to get creative.
+
 Current limitations:
 1. We don't currently have a good way to read the HTTP/2 frames in the response
-   body
+   body. We have to copy & paste a bunch of private code from the `http2` package to read the frames.
 1. It is currently using a `tls.Client`, and the same techniques might not work for a `httputil.ReverseProxy`
-1. Currently hangs or fails sometimes due to the connection closing or an error with
-   the order frames are received.
 1. Probably some other stuff
 
-Current anti-limitations:
+Current anti-limitations (previous limitations we resolved):
 1. In the HTTP/2 case, it issues only a single request
-1. Because it shares the TCP connection from the Upgrade request, it doesn't re-use the TCP connection
+1. Because it shares the TCP connection from the Upgrade request, it re-uses the same TCP connection
 1. It no longer depends on ALPN to use HTTP/2 for the second connection
 
 ## Installation
