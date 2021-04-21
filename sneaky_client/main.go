@@ -80,21 +80,14 @@ func main() {
 		initialHeaderTableSize := uint32(4096)
 		// https://github.com/golang/net/blob/d25e3042586827419b3589d4a4697231930a15d6/http2/transport.go#L39
 		transportDefaultConnFlow := uint32(1 << 30)
-		transportDefaultStreamFlow := uint32(4 << 20)
 
 		// https://github.com/golang/net/blob/d25e3042586827419b3589d4a4697231930a15d6/http2/transport.go#L640
 		bw := bufio.NewWriter(conn)
 		framer := http2.NewFramer(bw, br)
 		framer.ReadMetaHeaders = hpack.NewDecoder(initialHeaderTableSize, nil)
 
-		initialSettings := []http2.Setting{
-			{ID: http2.SettingEnablePush, Val: 0},
-			{ID: http2.SettingInitialWindowSize, Val: transportDefaultStreamFlow},
-		}
-
 		// https://github.com/golang/net/blob/d25e3042586827419b3589d4a4697231930a15d6/http2/transport.go#L695
 		bw.Write([]byte(http2.ClientPreface))
-		framer.WriteSettings(initialSettings...)
 		framer.WriteWindowUpdate(0, transportDefaultConnFlow)
 		bw.Flush()
 
@@ -113,7 +106,7 @@ func main() {
 			case *http2.MetaHeadersFrame:
 				fmt.Printf("Got HEADERS: %+v\n", frame)
 				fmt.Printf("Response Headers: %+v\n", frame.String())
-				// https: //github.com/golang/net/blob/d25e3042586827419b3589d4a4697231930a15d6/http2/transport.go#L1957
+				// https://github.com/golang/net/blob/d25e3042586827419b3589d4a4697231930a15d6/http2/transport.go#L1957
 				status := frame.PseudoValue("status")
 				statusCode, _ := strconv.Atoi(status)
 
@@ -127,7 +120,6 @@ func main() {
 					StatusCode: statusCode,
 					Status:     status + " " + http.StatusText(statusCode),
 				}
-				fmt.Printf("Client Proto: %d\n", resp.ProtoMajor)
 				for _, hf := range regularFields {
 					key := http.CanonicalHeaderKey(hf.Name)
 					vv := header[key]
