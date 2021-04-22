@@ -80,14 +80,21 @@ func main() {
 		initialHeaderTableSize := uint32(4096)
 		// https://github.com/golang/net/blob/d25e3042586827419b3589d4a4697231930a15d6/http2/transport.go#L39
 		transportDefaultConnFlow := uint32(1 << 30)
+		transportDefaultStreamFlow := uint32(4 << 20)
 
 		// https://github.com/golang/net/blob/d25e3042586827419b3589d4a4697231930a15d6/http2/transport.go#L640
 		bw := bufio.NewWriter(conn)
 		framer := http2.NewFramer(bw, br)
 		framer.ReadMetaHeaders = hpack.NewDecoder(initialHeaderTableSize, nil)
 
+		initialSettings := []http2.Setting{
+			{ID: http2.SettingEnablePush, Val: 0},
+			{ID: http2.SettingInitialWindowSize, Val: transportDefaultStreamFlow},
+		}
+
 		// https://github.com/golang/net/blob/d25e3042586827419b3589d4a4697231930a15d6/http2/transport.go#L695
 		bw.Write([]byte(http2.ClientPreface))
+		framer.WriteSettings(initialSettings...)
 		framer.WriteWindowUpdate(0, transportDefaultConnFlow)
 		bw.Flush()
 
