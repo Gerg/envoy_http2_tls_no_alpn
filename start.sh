@@ -12,6 +12,10 @@ pushd ./sneaky_client
   go build
 popd
 
+pushd ./sneaky_reverse_proxy
+  go build
+popd
+
 trap 'kill $(jobs -p)' EXIT
 
 echo "$H2C"
@@ -30,6 +34,9 @@ cp ./envoy/sds-server-validation-context.yaml /tmp
 # Hint: you need envoy
 echo "Starting Envoy on 61001"
 envoy --config-path ./envoy/envoy.yaml -l error &
+
+echo "Starting Reverse Proxy on 8000"
+./sneaky_reverse_proxy/sneaky_reverse_proxy &
 
 echo "Run ./sneaky_client/sneaky-client"
 wait

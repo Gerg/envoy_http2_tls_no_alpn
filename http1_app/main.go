@@ -7,7 +7,7 @@ import (
 
 func main() {
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintf(w, "Hello, %v, http: %v", r.URL.Path, r.TLS == nil)
+		fmt.Fprintf(w, "Hello, %v, Used TLS: %v", r.URL.Path, r.TLS != nil)
 	})
 
 	fmt.Printf("Listening [0.0.0.0:8080]...\n")

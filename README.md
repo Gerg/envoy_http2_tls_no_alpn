@@ -1,4 +1,5 @@
 # envoy_http2_tls_no_alpn
+
 Proof of concept for a HTTP connection that terminates TLS at envoy, but
 negotiates the HTTP version at the backend.
 
@@ -28,6 +29,16 @@ Current anti-limitations (previous limitations we resolved):
 1. Because it shares the TCP connection from the Upgrade request, it re-uses the same TCP connection
 1. It no longer depends on ALPN to use HTTP/2 for the second connection
 
+
+### Sneaky Client
+
+Attempts to get a HTTP client to use the steps described above.
+
+### Sneaky Reverse Proxy
+
+Attempts to use `httputil.ReveseProxy` to serve HTTP/2 traffic and use the
+steps above to communicate with the backend via the Envoy proxy.
+
 ## Installation
 
 1. Install Envoy: https://www.envoyproxy.io/docs/envoy/latest/start/install#install
@@ -37,13 +48,27 @@ Current anti-limitations (previous limitations we resolved):
 ## Running
 
 Testing HTTP/1.1 Backend:
-1. `./start.sh` <- This will build and start the h2c app and envoy proxy
+1. `./start.sh` <- This will build and start the h2c app and envoy proxy and
+   reverse proxy
 Testing H2C Backend:
-1. `H2C=true ./start.sh` <- This will build and start the http1 app and envoy proxy
+1. `H2C=true ./start.sh` <- This will build and start the http1 app and envoy proxy and reverse proxy
 
-Either Way:
+For sneaky client:
 1. `./sneaky_client/sneaky-client` <- This will attempt the TLS + h2c upgrade request to envoy
 1.  See that it works?
+
+For sneaky reverse proxy:
+1. `curl -k https://localhost:8000`
+1.  See that it works?
+
+## Ports
+
+|Port|What|
+|-|-|
+|8080|H2C app OR HTTP/1.1 app, depending on H2C environment variable passed to
+start script|
+|61001|Envoy|
+|8000|Reverse Proxy|
 
 ## Debugging
 

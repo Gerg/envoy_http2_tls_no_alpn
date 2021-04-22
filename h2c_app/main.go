@@ -14,9 +14,9 @@ func main() {
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		fmt.Printf("Request %+v\n", r)
 		fmt.Printf("Headers %+v\n", r.Header)
-		fmt.Printf("Hello, %v, http: %v, proto: %v\n", r.URL.Path, r.TLS == nil, r.Proto)
+		fmt.Printf("Hello, %v, used tls: %v, proto: %v\n", r.URL.Path, r.TLS != nil, r.Proto)
 		fmt.Print("\n")
-		fmt.Fprintf(w, "Hello, %v, http: %v", r.URL.Path, r.TLS == nil)
+		fmt.Fprintf(w, "Hello, %v, Used TLS: %v", r.URL.Path, r.TLS != nil)
 	})
 
 	server := &http.Server{
