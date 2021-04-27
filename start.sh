@@ -22,7 +22,7 @@ echo "$H2C"
 
 if [[ "$H2C" = "true" ]]; then
   echo "Starting h2c App on 8080"
-  ./h2c_app/h2c-app &
+  ./h2c_app/main.py &
 else
   echo "Starting HTTP/1.1 App on 8080"
   ./http1_app/http1-app &
