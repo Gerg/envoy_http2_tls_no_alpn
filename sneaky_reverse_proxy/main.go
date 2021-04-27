@@ -26,6 +26,10 @@ func handle(w http.ResponseWriter, r *http.Request) {
 	director := func(req *http.Request) {
 		req.Header.Add("X-Forwarded-Host", req.Host)
 		req.Header.Add("X-Origin-Host", envoyHost)
+		req.Header.Add("Upgrade", "h2c")
+		req.Header.Add("HTTP2-Settings", "AAMAAABkAARAAAAAAAIAAAAA")
+		req.Header.Add("Connection", "Upgrade, HTTP2-Settings")
+		req.Header.Add("X-Debug", "Upgrade Request")
 		req.URL.Scheme = "https"
 		req.URL.Host = envoyHost
 	}
