@@ -99,6 +99,7 @@ func main() {
 		bw.Flush()
 
 		i := 0
+		body := &buffer{}
 
 		// https://github.com/golang/net/blob/d25e3042586827419b3589d4a4697231930a15d6/http2/transport.go#L1818
 	loop:
@@ -127,6 +128,7 @@ func main() {
 					StatusCode: statusCode,
 					Status:     status + " " + http.StatusText(statusCode),
 				}
+				resp.Body = body
 				for _, hf := range regularFields {
 					key := http.CanonicalHeaderKey(hf.Name)
 					vv := header[key]
@@ -147,8 +149,6 @@ func main() {
 				// https://github.com/golang/net/blob/d25e3042586827419b3589d4a4697231930a15d6/http2/transport.go#L2195
 				data := frame.Data()
 				fmt.Printf("Response Data: %+v\n", string(frame.Data()))
-				body := &buffer{}
-				resp.Body = body
 				_, err = body.Write(data)
 				if err != nil {
 					log.Fatalf("Writing body failed %v\n", err)
