@@ -138,6 +138,10 @@ func main() {
 						header[key] = append(vv, hf.Value)
 					}
 				}
+				if frame.StreamEnded() {
+					fmt.Println("Stream Ended")
+					break loop
+				}
 			case *http2.DataFrame:
 				fmt.Printf("Got DATA: %+v\n", frame)
 				// https://github.com/golang/net/blob/d25e3042586827419b3589d4a4697231930a15d6/http2/transport.go#L2195
@@ -148,6 +152,10 @@ func main() {
 				_, err = body.Write(data)
 				if err != nil {
 					log.Fatalf("Writing body failed %v\n", err)
+				}
+				if frame.StreamEnded() {
+					fmt.Println("Stream Ended")
+					break loop
 				}
 			case *http2.GoAwayFrame:
 				fmt.Printf("Got GOAWAY: %+v\n", frame)
