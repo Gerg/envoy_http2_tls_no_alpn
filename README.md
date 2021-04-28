@@ -21,10 +21,10 @@ for us, so we have to get creative.
 Current limitations:
 1. We don't currently have a good way to read the HTTP/2 frames in the response
    body. We have to copy & paste a bunch of private code from the `http2` package to read the frames.
-1. It is currently using a `tls.Client`, and the same techniques might not work for a `httputil.ReverseProxy`
 1. Probably some other stuff
 
 Current anti-limitations (previous limitations we resolved):
+1. It works using either a `tls.Client` or a `httputil.ReverseProxy`
 1. In the HTTP/2 case, it issues only a single request
 1. Because it shares the TCP connection from the Upgrade request, it re-uses the same TCP connection
 1. It no longer depends on ALPN to use HTTP/2 for the second connection
@@ -58,7 +58,9 @@ For sneaky client:
 1.  See that it works?
 
 For sneaky reverse proxy:
-1. `curl -k https://localhost:8000`
+1. `curl -k https://localhost:8000 --http2` <- This will make an HTTP/2 request
+   to the reverse proxy, which will then attempt the TLS + h2c upgrade request
+   to envoy
 1.  See that it works?
 
 ## Ports
