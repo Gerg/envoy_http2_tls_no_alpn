@@ -1,7 +1,11 @@
-# golang.org/x/net v0.0.0-20210421230115-4e50805a0758
+# github.com/gerg/net v0.0.0-20210511191849-614d0ccade9b
+## explicit
+github.com/gerg/net/http
+github.com/gerg/net/http/httputil
+# golang.org/x/net v0.0.0-20210510120150-4163338589ed
 ## explicit
 golang.org/x/net/http/httpguts
-golang.org/x/net/http2
+golang.org/x/net/http/httpproxy
 golang.org/x/net/http2/hpack
 golang.org/x/net/idna
 # golang.org/x/text v0.3.6

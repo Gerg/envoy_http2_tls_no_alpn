@@ -19,11 +19,11 @@ Unfortunately, golang's `http2.Transport` doesn't handle the `h2c` upgrade flow
 for us, so we have to get creative.
 
 Current limitations:
-1. We don't currently have a good way to read the HTTP/2 frames in the response
-   body. We have to copy & paste a bunch of private code from the `http2` package to read the frames.
-1. Probably some other stuff
+1. Depends on fork of golang standard library (https://github.com/Gerg/net)
 
 Current anti-limitations (previous limitations we resolved):
+1. We no longer have to copy the HTTP/2 frame parsing logic from the `http2`
+   package. Instead we offload that to https://github.com/Gerg/net
 1. It works using either a `tls.Client` or a `httputil.ReverseProxy`
 1. In the HTTP/2 case, it issues only a single request
 1. Because it shares the TCP connection from the Upgrade request, it re-uses the same TCP connection
@@ -67,8 +67,7 @@ For sneaky reverse proxy:
 
 |Port|What|
 |-|-|
-|8080|H2C app OR HTTP/1.1 app, depending on H2C environment variable passed to
-start script|
+|8080|H2C app OR HTTP/1.1 app, depending on H2C environment variable passed to start script|
 |61001|Envoy|
 |8000|Reverse Proxy|
 
